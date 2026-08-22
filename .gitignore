@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+dist_*/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.zip
+*.bak
+*.backup
+# Operational exports stay out of the public repository
+dados_iniciais/*.json
+!dados_iniciais/README.md
