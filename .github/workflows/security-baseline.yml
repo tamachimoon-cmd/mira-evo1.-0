@@ -1,0 +1,45 @@
+name: Security baseline
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Scan tracked secrets and sensitive files
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess, pathlib, re, sys
+          files = subprocess.check_output(["git", "ls-files", "-z"]).split(b"\0")
+          sensitive = re.compile(r"(^|/)(\.env($|\.(?!example$|sample$))|id_rsa$|id_ed25519$|credentials\.json$|service.account\.json$|secrets?\.json$|[^/]+\.(pem|p12|pfx|key|sqlite3?|db)$)", re.I)
+          tokens = [
+              re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
+              re.compile(rb"gh[pousr]_[A-Za-z0-9_]{30,}"),
+              re.compile(rb"github_pat_[A-Za-z0-9_]{40,}"),
+              re.compile(rb"AKIA[0-9A-Z]{16}"),
+          ]
+          bad=[]
+          for raw in files:
+              if not raw: continue
+              p = pathlib.Path(raw.decode("utf-8","surrogateescape"))
+              if sensitive.search(p.as_posix()): bad.append((p.as_posix(),"sensitive filename"))
+              if not p.is_file() or p.is_symlink() or p.stat().st_size>2_000_000: continue
+              data=p.read_bytes()
+              for rx in tokens:
+                  if rx.search(data):
+                      bad.append((p.as_posix(),"possible hardcoded secret"))
+                      break
+          for filename, reason in bad:
+              print(f"::error file={filename}::{reason}")
+          print(f"Checked {len(files)} tracked paths; findings: {len(bad)}")
+          sys.exit(bool(bad))
+          PY
